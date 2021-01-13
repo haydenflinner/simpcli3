@@ -21,12 +21,11 @@ setup(
     description=u"An Awesome python module",
     long_description=readme,
     long_description_content_type="text/markdown",
-    python_requires=">=3",
+    python_requires=">=3.7",
     classifiers=[
         "Intended Audience :: Information Technology",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: BSD License",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
     ],
