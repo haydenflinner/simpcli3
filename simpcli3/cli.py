@@ -151,18 +151,57 @@ class ArgumentParser(argparse.ArgumentParser):
 
     """
 
-    def __init__(self, options_class: OptionsType, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+            self,
+            options_class: OptionsType,
+            *,
+            auto_deplural: bool = True,
+            expand_dataclass_arg: bool = False,
+            **kwargs):
+        kwargs = self._opinionated_defaults(kwargs)
+        super().__init__(**kwargs)
         self._options_type: OptionsType = options_class
-        self._posarg_name = None
+        self._posarg_stored_as = {}
+        self._auto_deplural = auto_deplural
+        self.expand_dataclass_arg = expand_dataclass_arg
+
+
         if self._options_type:
             self._add_dataclass_options(self._options_type)
+        
+        # hack to avoid having to decorate the passed-in function to make it accept uniform interface.
+        # TODO Rule out adding a runtime attribute on the function, I think this doesn't work in certain interpreters.
+    def _opinionated_defaults(self, kwargs):
+        from argparse import RawTextHelpFormatter
+        defaults = {
+            'allow_abbrev': False,
+            'formatter_class': RawTextHelpFormatter,
+        }
+        returning = kwargs.copy()
+        for key, val in defaults.items():
+            if key not in kwargs:
+                returning[key] = val
+        return returning
+    
+    def _determine_flagname(self, param_name, repeated):
+        if repeated and len(param_name) > 3 and param_name.endswith('s'):
+            param_name = param_name[:-1]  # remove last s, that is e.g. GccArgs.excludes becomes --exclude
+        return f"{param_name.strip('_').replace('_', '-')}"
 
-    def _determine_flags(self, param_name):
-        return [f"--{param_name.strip('_').replace('_', '-')}"]
+    def _determine_flags(self, param_name, repeated, positional, allow_short_flag):
+        flagname = self._determine_flagname(param_name, repeated)
+        if not positional:
+            returning = []
+            if allow_short_flag:
+                returning.append(f'-{param_name[0]}')
+            returning.append(f"--{flagname}")
+            return returning
+        else:
+            return [f'{flagname}']
 
-    def _disable_flags(self, param_name):
-        return [f"--no-{param_name.strip('_').replace('_', '-')}"]
+    def _disable_flags(self, param_name, repeated):
+        flagname = self._determine_flagname(param_name, repeated)
+        return [f"--no-{flagname}"]
 
     def _elem_type(self, thetype):
         # TODO Test coverage of this.
@@ -187,16 +226,16 @@ class ArgumentParser(argparse.ArgumentParser):
         for field in fields(options_type):
             if not field.metadata.get("cmdline", True):
                 continue
-            args = field.metadata.get("args", self._determine_flags(field.name))
-            positional = (not args[0].startswith("-")) or bool(field.metadata.get('positional'))
-            if positional:
-                if self._posarg_name:
-                    raise TypeError("Can't have multiple positional args, but saw at least {} and {}".format(
-                        self._posarg_name, positional
-                    ))
-                self._posarg_name = field.name
-
             elem_type, repeated = self._elem_type(field.type)
+            positional = (('args' in field.metadata and not field.metadata['args'][0].startswith('-'))
+                or bool(field.metadata.get('positional')))
+            allow_short_flag = field.metadata.get('allow_short_flag')
+            if positional and allow_short_flag:
+                raise ValueError("Can't have a positional argument with a flag.")
+            args = field.metadata.get("args", self._determine_flags(field.name, repeated, positional, allow_short_flag))
+            if positional:
+                self._posarg_stored_as[args[0]] = field.name
+
             if is_dataclass(elem_type):
                 # self._add_dataclass_options(elem_type)  # This would be interesting.
                 # TODO Strategy:
@@ -210,7 +249,9 @@ class ArgumentParser(argparse.ArgumentParser):
 
             # We want to ensure that we store the argument based on the
             # name of the field and not whatever flag name was provided
-            kwargs["dest"] = field.name
+            if not positional:
+                # For some reason argparse doesn't like a different dest for a positional arg.
+                kwargs["dest"] = field.name
 
             if field.metadata.get("choices") is not None:
                 kwargs["choices"] = field.metadata["choices"]
@@ -221,10 +262,22 @@ class ArgumentParser(argparse.ArgumentParser):
             if field.default == field.default_factory == MISSING and not positional:
                 kwargs["required"] = True
             else:
-                if field.default_factory != MISSING:
+                if field.default_factory is not MISSING:
                     kwargs["default"] = field.default_factory()
+                    print(f"Set default for {field.name} to {kwargs['default']}")
                 else:
-                    kwargs["default"] = field.default
+                    # if field.default is MISSING:
+                        # TODO Special MISSING whose __str__ isn't ugly?
+                    #    field.default = 
+                    def determine_default(field):
+                        # Only if not required:
+                        if field.default is MISSING and repeated:
+                            return []
+                        return field.default
+                    kwargs["default"] = determine_default(field)
+                    #  if kwargs.get("default") is MISSING:
+                    #     kwargs["default"] = None
+
                 # if isinstance(kwargs["default"], Enum):
                 #   kwargs["default"] = kwargs["default"].name
                     # TODO default here need to change if repeated?
@@ -232,18 +285,20 @@ class ArgumentParser(argparse.ArgumentParser):
             if field.type is bool:
                 if field.default:
                     kwargs["action"] = "store_false"
-                    args = field.metadata.get("args", self._disable_flags(field.name))
+                    args = field.metadata.get("args", self._disable_flags(field.name, repeated))
                 else:
                     kwargs["action"] = "store_true"
                 
-                for key in ("type", "required"):
+                for key in ("type", "required", "default"):
                     with suppress(KeyError):
                         kwargs.pop(key)
             if repeated:
-                kwargs["action"] = "append"
-                if kwargs.get("default") is MISSING:
-                    print("HERRO")
-                    kwargs["default"] = []
+                if not positional:
+                    kwargs["action"] = "append"
+                else:
+                    kwargs['nargs'] = '*'
+            if not repeated and positional:
+                kwargs['nargs'] = '?'
 
             if issubclass(elem_type, Enum):
                 kwargs["type"] = self._get_enum_parser(elem_type)
@@ -252,28 +307,41 @@ class ArgumentParser(argparse.ArgumentParser):
             self.add_argument(*args, **kwargs)
 
     def _handle_empty_posarg(self, ns_dict):
-        if not self._posarg_name:
+        if not self._posarg_stored_as:
             return
+        to_remove = []
+        # Necessary because we can't use 'dest' with positional args.
+        for dict_key, dataclass_key in self._posarg_stored_as.items():
+            if dict_key != dataclass_key:
+                ns_dict[dataclass_key] = ns_dict[dict_key]
+                to_remove.append(dict_key)
+        for dict_key in to_remove:
+            ns_dict.pop(dict_key)
         # Can't create a dataclass without providing a all args unless they have defaults.
         # In the case of a positional arg without default, we will have arg_name=MISSING here,
         # rather than the arg not being provided, which dataclass accepts as the value without question.
         # bool(MISSING()) == True, so can't expect user to guard against with "if not myargs.posarg".
         # It is tempting to raise an argparsing error here. But the ideal solution seems to be to pass [].
         # This way, if the user prefers that an empty list isn't a valid argument, they can raise the TypeError themselves,
-        # And this also prevents other Python functions calling into it with an empty list.
-        if self._posarg_name in ns_dict and ns_dict[self._posarg_name] is MISSING:
-            ns_dict[self._posarg_name] = []
+        # And this also prevents other Python functions calling into the user's function with an empty list.
+        # ns_dict[self._posarg_name] = []
 
+    def _handle_missing(self, ns_dict):
+        to_remove = {k for k, v in ns_dict.items() if v is MISSING}
+        for key in to_remove:
+            ns_dict.pop(key)
 
     def parse_args(self, *args, **kwargs) -> OptionsType:
         """Parse arguments and return as the dataclass type."""
         namespace = super().parse_args(*args, **kwargs)
         ns_dict = vars(namespace)
         self._handle_empty_posarg(ns_dict)
+        self._handle_missing(ns_dict)
+        print(f"Expanding: {ns_dict}")
         return self._options_type(**ns_dict)
 
 from inspect import signature
-def _get_argparser(func):
+def get_argparser(func):
     sig = signature(func)
     if not sig.parameters:
         return ArgumentParser(None)
@@ -288,8 +356,15 @@ def _get_argparser(func):
     dataclass = _sig_to_params_dataclass(func.__name__, sig)
     return ArgumentParser(dataclass)
 
+def func_to_params_dataclass(func):
+    sig = signature(func)
+    return _sig_to_params_dataclass(func.__name__, sig)
+
 import dataclasses
 def _sig_to_params_dataclass(func_name, sig):
+    def _get_default_factory(p):
+        # Workaround for what might be Python's most annoying gotcha.
+        return lambda: p.default
     dc_params = []
     for param in sig.parameters.values():
         if param.annotation is sig.empty:
@@ -297,9 +372,28 @@ def _sig_to_params_dataclass(func_name, sig):
         if param.default is not sig.empty:
             # I don't think there is any downside to always using default_factory rather than trying to use default,
             # and only using default_factory in the cases where dataclasses would throw a ValueError.
-            dc_params.append((param.name, param.annotation, dataclasses.field(default_factory=lambda: param.default)))
+            dc_params.append((param.name, param.annotation, dataclasses.field(default_factory=_get_default_factory(param))))
         else:
             dc_params.append((param.name, param.annotation))
 
     returning = dataclasses.make_dataclass(f'{func_name.capitalize()}Args', dc_params)
+    print(f"Made dataclass: {func_name}: {dc_params}")
     return returning
+
+class CliApp:
+    def __init__(self, *, main_cmd: callable):
+        """TODO Support for more than one cmd,  i.e. subcommands."""
+        self._main_cmd = main_cmd
+
+    def run(self, argv=None):
+        parser = get_argparser(self._main_cmd)
+        args = parser.parse_args()
+        if not parser.expand_dataclass_arg:
+            self._main_cmd(args)
+        else:
+            self._main_cmd(**args)
+
+# TODO Add a decorator here using 'decorator' or 'wrapt' module.
+
+def run(args):
+    pass
