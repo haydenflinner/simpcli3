@@ -118,21 +118,15 @@ SOFTWARE.
 
 """
 
-"""
-Modifications made from original:
-  2. "positional" metadata arg as I think that's more intuitive than passing "args" directly.
-  3. If type is enum, choices automatically specified, default given as string.
-  4. Better handling of bools (especially ones which default to True).
-  4. TODO parse richer types like dictionary? Like Dict as annotation type, so allow optional -Dmykey=myval
-  5. TODO Support for loading Python, JSON / (optional YAML) configs
-
-
-"""
 import argparse
 from contextlib import suppress
 from dataclasses import is_dataclass, MISSING, fields
 from enum import Enum
 from typing import TypeVar
+
+from gettext import gettext as _
+from argparse import ArgumentError
+
 
 __version__ = "0.1.0"
 
@@ -208,7 +202,7 @@ class ArgumentParser(argparse.ArgumentParser):
         try:
             elem_type = thetype.__args__[0]
             # TODO fix to logging.debug
-            # print(f"Determined {thetype} had elements of type: {elem_type}")
+            print(f"Determined {thetype} had elements of type: {elem_type}")
             return elem_type, True
         except Exception:
             return thetype, False
@@ -216,8 +210,35 @@ class ArgumentParser(argparse.ArgumentParser):
     def _get_enum_parser(self, enum_type):
         def parse_enum(val):
             # I have no idea why they chose this syntax for parsing a string.
-            return enum_type[val]
+            try:
+                return enum_type[val]
+            except Exception as e:
+                import pdb; pdb.set_trace()
         return parse_enum
+
+    def _check_value(self, action, value):
+        """In order to prevent --help from showing choices as EnumType.VALUE,
+        thus leading user into typing wrong value,
+        we need to replace original ArgumentParser functionality here,
+        because it checks for existence in list of defaults _after_ converting to enum type,
+        although list of defaults is given as strings."""
+        # converted value must be one of the choices (if specified)
+        if action.choices is None:
+            return
+        enum_choices = []
+        for str_val in action.choices:
+            try:
+                enum_choices.append(action.type(str_val))
+            except Exception:  # Naughty to have an option in choices which doesn't parse into your type...
+                pass
+
+        # Replace action.choices with enum_choices in the original implementation and carry on:
+        if value not in enum_choices:
+            args = {'value': value,
+                    'choices': ', '.join(map(repr, action.choices))}
+            msg = _('invalid choice: %(value)r (choose from %(choices)s)')
+            raise ArgumentError(action, msg % args)
+
 
     def _add_dataclass_options(self, options_type) -> None:
         if not is_dataclass(options_type):
@@ -256,8 +277,8 @@ class ArgumentParser(argparse.ArgumentParser):
             if field.metadata.get("choices") is not None:
                 kwargs["choices"] = field.metadata["choices"]
             elif issubclass(elem_type, Enum):
-                # kwargs["choices"] = [elem.name for elem in elem_type]
-                kwargs["choices"] = [elem for elem in elem_type]
+                kwargs["choices"] = [elem.name for elem in elem_type]
+                # kwargs["choices"] = [elem for elem in elem_type]  # worked, but help wasn't as pretty.
 
             if field.default == field.default_factory == MISSING and not positional:
                 kwargs["required"] = True
@@ -302,8 +323,12 @@ class ArgumentParser(argparse.ArgumentParser):
 
             if issubclass(elem_type, Enum):
                 kwargs["type"] = self._get_enum_parser(elem_type)
+                if kwargs["default"] is not MISSING and isinstance(kwargs["default"], Enum):
+                    kwargs["default"] = kwargs["default"].name
+                    print("hey f")
 
-            print(f"add_argument: {args} {kwargs}")
+            print(f"add_argument: {args} {kwargs}. {positional=}")
+        
             self.add_argument(*args, **kwargs)
 
     def _handle_empty_posarg(self, ns_dict):
@@ -393,7 +418,6 @@ class CliApp:
         else:
             self._main_cmd(**args)
 
-# TODO Add a decorator here using 'decorator' or 'wrapt' module.
-
+# @cli
 def run(args):
     pass
