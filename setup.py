@@ -6,7 +6,7 @@ with open("README.md") as f:
     readme = f.read()
 
 # Runtime Requirements.
-inst_reqs = ["click"]
+inst_reqs = []
 
 # Dev Requirements
 extra_reqs = {

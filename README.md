@@ -14,6 +14,13 @@ TODO List
   4. TODO parse richer types like dictionary? Like Dict as annotation type, so allow optional -Dmykey=myval
   5. TODO Support for loading Python, JSON / (optional YAML) configs
 
+## Prior Art
+And why I didn't use it.
+
+argparse_dataclasses and argparse_dataclass reasons, see Improvements.
+
+SimpleParsing (pip install simple_parsing). Different goals and approaches.
+I'm not sure that positional args are ever possible in that schema, for example.
 
 
 
