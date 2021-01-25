@@ -27,7 +27,7 @@ def check_help(parser, expected):
     assert got == expected
 
 from enum import Enum
-from typing import List
+from typing import List, Dict
 from dataclasses import dataclass, field
 import dataclasses
 
@@ -47,13 +47,13 @@ def test_low_effort_function():
     helper(parser, '--path x --exclude y --no-follow-symlinks --print-format LINE_PER_ENTRY'.split(),
         dict(paths=['x'], excludes=['y'], follow_symlinks=False, print_format=PrintFormat.LINE_PER_ENTRY))
     check_help(parser, """
-usage: pytest [-h] --path PATHS [--exclude EXCLUDES] [--no-follow-symlinks]
+usage: pytest [-h] --path str [--exclude str] [--no-follow-symlinks]
               [--print-format {LINE_PER_ENTRY,PRETTY}]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --path PATHS
-  --exclude EXCLUDES
+  --path str
+  --exclude str
   --no-follow-symlinks
   --print-format {LINE_PER_ENTRY,PRETTY}
 """.lstrip())
@@ -103,11 +103,11 @@ def test_cls_static_method_1():
     parser = helper(MyClass.clsmethod, '--myarg x1 --myarg x2'.split(), {'myargs': ['x1', 'x2']})
     helper(MyClass.statmethod, '--myarg x1 --myarg x2'.split(), {'myargs': ['x1', 'x2']})
 
-    check_help(parser, """usage: pytest [-h] --myarg MYARGS
+    check_help(parser, """usage: pytest [-h] --myarg str
 
 optional arguments:
-  -h, --help      show this help message and exit
-  --myarg MYARGS
+  -h, --help   show this help message and exit
+  --myarg str
 """)
 
 def test_cli_field_decorator():
@@ -141,6 +141,12 @@ def test_cli_short_flag():
 
     parser = helper(f, '-i 2 -i 4 --my-special 6 -i 8'.split(), {'my_special': [2, 4, 6, 8]})
 
+def test_dict():
+    # This feature is pretty half-baked but does at least work. Would like to verify that it interacts well with
+    # short flags, so can pass "-Dx=y". If you don't like using =, can parse kwargs yourself for now.
+    def f(config: Dict[str, int]):
+        pass
+    parser = helper(f, '--config x=2 --config y=5'.split(), {'config': {'x': 2, 'y': 5}})
 
 
 """
