@@ -17,12 +17,16 @@ def helper(func_or_parser, arglist, expect):
     assert dataclasses.asdict(data) == expect
     return parser
 
+def _clean_help(help):
+    help = help.replace('__main__.py', 'pytest')
+    help = '\n'.join((l.strip() for l in help.splitlines()))
+    return help
+
 def check_help(parser, expected):
     out = StringIO()
     parser.print_help(out)
-    # expected = dedent(expected)
-    got = out.getvalue()
-    got = got.replace('__main__.py', 'pytest')
+    got = _clean_help(out.getvalue())
+    expected = _clean_help(expected)
     print(got)
     print(expected)
     assert got == expected
