@@ -6,7 +6,7 @@ with open("README.md") as f:
     readme = f.read()
 
 # Runtime Requirements.
-inst_reqs = ["simple_parsing"]
+inst_reqs = []
 
 # Dev Requirements
 extra_reqs = {
@@ -17,7 +17,7 @@ extra_reqs = {
 
 setup(
     name="simpcli3",
-    version="0.0.2",
+    version="0.0.3",
     description=u"A Python3 library for turning functions into cmd-line programs trivially.",
     long_description=readme,
     long_description_content_type="text/markdown",

@@ -1,14 +1,8 @@
 """
-``argparse_dataclass``
+``simpcli3``
 ======================
 
-Declarative CLIs with ``argparse`` and ``dataclasses``.
-
-.. image:: https://travis-ci.org/mivade/argparse_dataclass.svg?branch=master
-    :target: https://travis-ci.org/mivade/argparse_dataclass
-
-.. image:: https://img.shields.io/pypi/v/argparse_dataclass
-    :alt: PyPI
+A Python3 module for turning functions into cmd-line programs trivially.
 
 Features
 --------
@@ -23,6 +17,7 @@ are not yet implemented.
 - [✓] Arguments with a finite set of choices
 - [⊘] Subcommands
 - [⊘] Mutually exclusive groups
+- [⊘] Compositon in dataclasses
 
 Examples
 --------
@@ -31,65 +26,45 @@ A simple parser with flags:
 
 .. code-block:: pycon
 
-    >>> from dataclasses import dataclass
-    >>> from argparse_dataclass import ArgumentParser
-    >>> @dataclass
-    ... class Options:
-    ...     verbose: bool
-    ...     other_flag: bool
-    ...
-    >>> parser = ArgumentParser(Options)
-    >>> print(parser.parse_args([]))
-    Options(verbose=False, other_flag=False)
-    >>> print(parser.parse_args(["--verbose", "--other-flag"]))
-    Options(verbose=True, other_flag=True)
+    from simpcli3 import CliApp
+    from typing import List
+
+    def myls(paths: List[str], exclude: List[str]=[], mystr: str=None, follow_symlinks: bool=False):
+        print(f"Received args: {paths}\n")
+        for path in paths:
+            print(path)
+
+    if __name__ == "__main__":
+        CliApp(myls).run()
 
 Using defaults:
 
 .. code-block:: pycon
 
-    >>> from dataclasses import dataclass, field
-    >>> from argparse_dataclass import ArgumentParser
-    >>> @dataclass
-    ... class Options:
-    ...     x: int = 1
-    ...     y: int = field(default=2)
-    ...     z: float = field(default_factory=lambda: 3.14)
-    ...
-    >>> parser = ArgumentParser(Options)
-    >>> print(parser.parse_args([]))
-    Options(x=1, y=2, z=3.14)
+    from dataclasses import dataclass, field
+    from enum import Enum
+    from typing import List
 
-Enabling choices for an option:
+    class PrintFormat(Enum):
+        LINE_PER_ENTRY = 1
+        PRETTY = 2
 
-.. code-block:: pycon
+    @dataclass
+    class ListDirectoryArgs:
+        paths: List[str] = field(metadata=dict(positional=True))
+        exclude: List[str] = field(default_factory=list)
+        print_format: PrintFormat = PrintFormat.PRETTY
+        follow_symlinks: bool = True
 
-    >>> from dataclasses import dataclass, field
-    >>> from argparse_dataclass import ArgumentParser
-    >>> @dataclass
-    ... class Options:
-    ...     small_integer: int = field(metadata=dict(choices=[1, 2, 3]))
-    ...
-    >>> parser = ArgumentParser(Options)
-    >>> print(parser.parse_args(["--small-integer", "3"]))
-    Options(small_integer=3)
+    def myls(lsargs: ListDirectoryArgs):
+        print(f"Received args: {lsargs}\n")
+        for path in lsargs.paths:
+            print(path)
 
-Using different flag names and positional arguments:
+    if __name__ == "__main__":
+        from simpcli3 import CliApp
+        CliApp(myls).run()
 
-.. code-block:: pycon
-
-    >>> from dataclasses import dataclass, field
-    >>> from argparse_dataclass import ArgumentParser
-    >>> @dataclass
-    ... class Options:
-    ...     x: int = field(metadata=dict(args=["-x", "--long-name"]))
-    ...     positional: str = field(metadata=dict(args=["positional"]))
-    ...
-    >>> parser = ArgumentParser(Options)
-    >>> print(parser.parse_args(["-x", "0", "positional"]))
-    Options(x=0, positional='positional')
-    >>> print(parser.parse_args(["--long-name", 0, "positional"]))
-    Options(x=0, positional='positional')
 
 License
 -------
@@ -126,11 +101,11 @@ from typing import TypeVar, List, Dict, Callable, Optional
 
 from gettext import gettext as _
 from argparse import ArgumentError
-from simple_parsing.docstring import get_attribute_docstring
 
 from .logging import logger
+from .docstring import get_attribute_docstring
 
-__version__ = "0.1.0"
+__version__ = "0.0.3"
 
 OptionsType = TypeVar("OptionsType")
 

@@ -55,7 +55,8 @@ And why I didn't use it.
 
 For argparse_dataclasses and argparse_dataclass reasons, see Improvements.
 
-SimpleParsing (pip install simple_parsing). Different goals and approaches in terms of simplicity.
+SimpleParsing (pip install simple_parsing). Different goals and approaches in terms of simplicity. For one, we
+don't depend on numpy.
 
 
 #### Improvements over projects based on
