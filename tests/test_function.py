@@ -22,6 +22,7 @@ def check_help(parser, expected):
     parser.print_help(out)
     # expected = dedent(expected)
     got = out.getvalue()
+    got = got.replace('__main__.py', 'pytest')
     print(got)
     print(expected)
     assert got == expected
