@@ -149,6 +149,38 @@ def test_dict():
     parser = helper(f, '--config x=2 --config y=5'.split(), {'config': {'x': 2, 'y': 5}})
 
 
+def test_inheritance():
+    @dataclass
+    class Parent:
+        my_int: int
+    @dataclass
+    class Child(Parent):
+        my_float: float
+
+    # TODO handle conflict
+    def f(c: Child):
+        pass
+
+    parser = helper(f, '--my-int 1 --my-float 2.4'.split(), {'my_int': 1, 'my_float': 2.4})
+
+"""TODO Doesn't currently work.
+def test_composition():
+    @dataclass
+    class Box:
+        my_int: int
+    
+    @dataclass
+    class Item:
+        my_box: Box
+        my_float: float
+
+    def f(c: Item):
+        pass
+
+    parser = helper(f, '--my-int 1 --my-float 2.4'.split(), {'my_int': 1, 'my_float': 2.4})
+"""
+
+
 """
 def test_nested_dataclasses():
     @dataclass
@@ -167,3 +199,60 @@ def test_nested_dataclasses():
 
     parser = helper(f, '--verbose --version --my-special 3'.split(), {'my_special': 3, 'ca': {'verbose': True, 'version': False}, 'version': False})
 """
+
+def git_stash():
+    """This will never work as long as we use default argparse; python argparser subcmd thing is too trash.
+    """
+    from typing import Optional
+
+    @dataclass
+    class GlobalGitConfig:
+        email : str
+
+    """
+    class GitStash(CmdLineMixin, ConfigurableMixin):
+        config : GlobalGitConfig
+
+        def push(self, name: Optional[str]=None):
+            name = name or "default-name"
+            print(f"User {self.config.email} is pushing to stash with name: {name}")
+
+        def pop(self, name: Optional[str]):
+            name = name or "default-name"
+            print(f"User {self.config.email} is popping to stash with name: {name}")
+
+        cmd_line_default = pop
+
+        # # Provided by default with Configurable mixin.
+        # @classmethod
+        # def from_config(cls, config: Config):
+        #     instance = cls()
+        #     instance.config = config
+        #     return instance
+    """
+
+    from simpcli3.cli import get_argparser, cli_field, DefaultSubcommandArgParse
+    def do_push():
+        print("push")
+    def do_pop():
+        print("pop")
+
+    # God this sucks
+    a = DefaultSubcommandArgParse()
+    b = a.add_subparsers()
+    push = b.add_parser('push')
+    push.set_defaults(func=do_push)
+    push.add_argument('myarg1')
+
+    pop = b.add_parser('pop')
+    pop.set_defaults(func=do_pop)
+    pop.add_argument('--myarg2')
+
+    a.set_default_subparser('push')
+    parsed_args = a.parse_args(['pop --help'])
+
+
+    print(parsed_args)
+
+    # if hasattr(parsed_args, 'func'):
+        # parsed_args.func()

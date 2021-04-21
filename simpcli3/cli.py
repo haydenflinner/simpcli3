@@ -122,7 +122,7 @@ import argparse
 from contextlib import suppress
 from dataclasses import is_dataclass, MISSING, fields
 from enum import Enum
-from typing import TypeVar, List, Dict, Callable
+from typing import TypeVar, List, Dict, Callable, Optional
 
 from gettext import gettext as _
 from argparse import ArgumentError
@@ -227,6 +227,7 @@ class ArgumentParser(argparse.ArgumentParser):
             try:
                 return enum_type[val]
             except Exception as e:
+                # TODO remove
                 import pdb; pdb.set_trace()
         return parse_enum
 
@@ -270,6 +271,7 @@ class ArgumentParser(argparse.ArgumentParser):
         if not is_dataclass(options_type):
             raise TypeError(f"cls must be a dataclass, but given {self._options_type}")
 
+        logger.debug(f"{fields(options_type)}")
         for field in fields(options_type):
             if not field.metadata.get("cmdline", True):
                 continue
@@ -286,12 +288,14 @@ class ArgumentParser(argparse.ArgumentParser):
                 self._posarg_stored_as[args[0]] = field.name
 
             if is_dataclass(elem_type):
-                # self._add_dataclass_options(elem_type)  # This would be interesting.
                 # TODO Strategy:
-                #   1. Recurse and include all of the flags
-                #   2. Map those flags back to this instance of this type.
-                # raise ValueError("TODO, Currently do not support dataclass members.")
-                self._add_dataclass_options(elem_type, prefix=field.name)
+                #   1. BFS and include all of the flags. Consider the case of a list of dataclass instances as a field.
+                #   2. Also consider conflict resolution.
+                msg = ("Cannot currently handle composition of dataclasses." +
+                        "You could try inheritance, or add support yourself.")
+                raise NotImplementedError(msg)
+                # self._add_dataclass_options(elem_type, prefix=field.name)
+                # continue
             kwargs = {
                 "type": elem_type,
                 "help": self._get_help(options_type, field),
@@ -462,7 +466,7 @@ class CliApp:
         """TODO Support for more than one cmd,  i.e. subcommands."""
         self._main_cmd = main_cmd
 
-    def run(self, argv=None):
+    def run(self, argv: Optional[List[str]]=None):
         parser = get_argparser(self._main_cmd)
         argobj = parser.parse_args(args=argv)
         if not parser.expand_dataclass_arg:
@@ -470,6 +474,8 @@ class CliApp:
         else:
             logger.debug(f"argobj: {argobj}")
             self._main_cmd(**dataclasses.asdict(argobj))
+
+    
 
 
 from dataclasses import Field
@@ -505,6 +511,7 @@ class cli_field(Field):
         exec("; ".join(f"kwargs['{kwarg}'] = {kwarg}" for kwarg in copy_pasted_kwargs))
         # kwargs.update({vars()[k] for k in copy_pasted_kwargs})
         super().__init__(**kwargs)
-    
-def run(args):
-    pass
+
+
+# New plan;
+# Copy in invoke's parser and quit using argparse. Before we do that, should probably push so that can begin using.

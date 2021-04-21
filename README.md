@@ -1,53 +1,64 @@
 # simpcli3
+A Python3 module for turning functions into cmd-line programs trivially.
 
-TODO List
-  1. Decorator for functions
-  2. Decide on cmd / subcmd structure. Classes?
-  3. In doc, recreate a few classic cmds
-  4. args / kwargs support
-  5. Mapping[str->something] support for e.g. cmake -Dx.y.z=21
-  6. Tests for nested dataclass translation.
-  7. Code to load JSON / YAML / Python configs, this goes with 8:
-  8. SimpleCli and BigCli:
-    a. SimpleCli accepts a function and returns something you an call .run() on to run the thing
-    b. BigCli looks like the below:
-  4. TODO parse richer types like dictionary? Like Dict as annotation type, so allow optional -Dmykey=myval
-  5. TODO Support for loading Python, JSON / (optional YAML) configs
 
-## Prior Art
+## Examples
+### Non-dataclass (simple function) example
+```
+from simpcli3 import CliApp
+from typing import List
+
+def myls(paths: List[str], exclude: List[str]=[], mystr: str=None, follow_symlinks: bool=False):
+    print(f"Received args: {paths}\n")
+    for path in paths:
+        print(path)
+
+if __name__ == "__main__":
+    CliApp(myls).run()
+```
+
+### More advanced Example
+This example actually uses a dataclass argument rather than a collection of arguments of primitive types.
+
+```
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List
+
+class PrintFormat(Enum):
+    LINE_PER_ENTRY = 1
+    PRETTY = 2
+
+@dataclass
+class ListDirectoryArgs:
+    paths: List[str] = field(metadata=dict(positional=True))
+    exclude: List[str] = field(default_factory=list)
+    print_format: PrintFormat = PrintFormat.PRETTY
+    follow_symlinks: bool = True
+
+def myls(lsargs: ListDirectoryArgs):
+    print(f"Received args: {lsargs}\n")
+    for path in lsargs.paths:
+        print(path)
+
+if __name__ == "__main__":
+    from simpcli3 import CliApp
+    CliApp(myls).run()
+```
+
+## Looking Forward
+
+It would be nice to also be able to parse JSON / TOML config files into dataclasses, rather than having ever-growing cmd-line args.
+
+### Prior Art
 And why I didn't use it.
 
-argparse_dataclasses and argparse_dataclass reasons, see Improvements.
+For argparse_dataclasses and argparse_dataclass reasons, see Improvements.
 
-SimpleParsing (pip install simple_parsing). Different goals and approaches.
-I'm not sure that positional args are ever possible in that schema, for example.
-
+SimpleParsing (pip install simple_parsing). Different goals and approaches in terms of simplicity.
 
 
-## TODO BigCli
-```
-class MyApp:
-    def __init__(self, config):
-        self._config = config
-
-    def ln(self, in:str,  out:str):
-        pass
-    
-    def cp(self, in:str, out:str):
-        pass
-
-run(MyApp)
-
---help:
-myapp {ln, cp}
-myapp ln --help
-   prints that help.
-
-TODO Check invoke here because they have better subcmd help than argparse.
-```
-
-
-### Improvements over projects based on
+#### Improvements over projects based on
 Modifications made from "argparse_dataclass":
   2. "positional" metadata arg as I think that's more intuitive than passing "args" directly.
   3. If type is enum, choices automatically specified, default given as string
