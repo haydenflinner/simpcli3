@@ -1,4 +1,5 @@
-repos:
+repos: []
+# repos:
     # TODO Someday, run blacken / flake8 / mypy. For now the number of little things
     # they nag over is annoying.
     # -   
